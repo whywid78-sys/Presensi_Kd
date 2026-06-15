@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sistem Presensi ASN Terintegrasi Firebase</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#1d4ed8">
+    <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/1/1a/Logo_Kementerian_Dalam_Negeri_Republik_Indonesia.png">
+
+    <!-- Menggunakan Tailwind CSS untuk UI Modern & Responsive -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS untuk Fitur Export Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        /* OVERRIDE BLOGGER STYLES */
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; background-color: #f3f4f6; overflow: hidden; }
+        #blogger-override-wrapper { position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 999999; background: #f3f4f6; overflow-y: auto; overflow-x: hidden;}
+        
+        /* Custom Styles & Animations */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        #blogger-override-wrapper { font-family: 'Inter', sans-serif; }
+        
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Video Container Fix */
+        video { width: 100%; height: 100%; object-fit: cover; display: block; }
+        canvas { display: none; }
+        
+        /* Toast Notification */
+        .toast { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); padding: 1rem 2rem; border-radius: 2rem; color: white; opacity: 0; transition: opacity 0.3s, transform 0.3s; z-index: 9999999; width: max-content; max-width: 90%; pointer-events: none; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2); font-weight: bold; text-align: center; font-size: 0.875rem; }
+        .toast.show { opacity: 1; transform: translate(-50%, 10px); }
+        .toast-success { background-color: #10b981; }
+        .toast-error { background-color: #ef4444; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        /* Tab Admin Styles */
+        .tab-btn { border-bottom: 2px solid transparent; transition: all 0.3s; }
+        .tab-btn.active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <!-- WRAPPER UTAMA (MENIMPA BLOGGER) -->
+    <div id="blogger-override-wrapper" class="text-gray-800 antialiased">
+        
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
+
+        <!-- NATIVE CAMERA FALLBACK -->
+        <input type="file" accept="image/*" capture="user" id="fallback-camera-input" class="hidden" onchange="handleFallbackCamera(event)">
+
+        <!-- MAIN APP CONTAINER -->
+        <div id="app" class="min-h-screen flex flex-col max-w-md mx-auto bg-white shadow-2xl relative">
+            
+            <!-- HEADER -->
+            <header class="bg-blue-700 text-white p-4 shadow-md flex justify-between items-center z-10 hidden" id="app-header">
+                <div>
+                    <h1 class="text-lg font-bold flex items-center gap-2">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/1/1a/Logo_Kementerian_Dalam_Negeri_Republik_Indonesia.png" alt="Logo" class="w-7 h-7 object-contain bg-white rounded-full p-0.5 shadow-sm" onerror="this.style.display='none'">
+                        Presensi ASN
+                        <span class="bg-yellow-400 w-2 h-2 rounded-full inline-block animate-pulse" title="Tersambung ke Firebase"></span>
+                    </h1>
+                    <p class="text-xs text-blue-200 mt-0.5" id="header-username">Memuat profil...</p>
+                </div>
+                <button onclick="logout()" class="text-xs bg-blue-800 hover:bg-blue-900 px-3 py-1.5 rounded-lg transition border border-blue-600 font-semibold shadow-inner">Logout</button>
+            </header>
+
+            <!-- VIEW: LOGIN -->
+            <div id="view-login" class="flex-1 flex flex-col justify-center p-6 fade-in bg-gradient-to-b from-blue-50 to-white">
+                <div class="text-center mb-8">
+                    <img src="https://iili.io/BgH5HyN.webp" 
+                         alt="Logo Instansi" 
+                         class="w-24 h-24 object-contain mx-auto mb-4 drop-shadow-xl transition-transform hover:scale-105"
+                         onerror="this.src='https://ui-avatars.com/api/?name=Presensi+ASN&background=2563eb&color=fff&size=128&rounded=true'">
+                    <h2 class="text-2xl font-bold text-gray-800 tracking-tight">E_PRESENSI ASN</h2>
+                    <p class="text-blue-500 text-sm mt-1">DINAS PENDIDIKAN DAN KEBUDAYAAN KAB. NGAWI</p>
+                    <p class="text-blue-500 text-sm mt-1">KORWIL KEDUNGGALAR</p>
+                </div>
+                <div class="space-y-4 bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">NIP / Username</label>
+                        <input type="text" id="login-username" class="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition text-sm bg-gray-50" placeholder="Masukkan NIP">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Password</label>
+                        <input type="password" id="login-password" class="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition text-sm bg-gray-50" placeholder="••••••••">
+                    </div>
+                    <button id="btn-login-submit" onclick="login()" class="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition transform active:scale-95 disabled:opacity-70 disabled:cursor-wait flex justify-center items-center">
+                        <span id="login-text">Masuk ke Sistem</span>
+                        <svg id="login-spinner" class="animate-spin ml-2 h-5 w-5 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    </button>
+
+                    <!-- Tombol Install PWA (Akan Muncul Jika Didukung Browser) -->
+                    <button id="btn-install-pwa" onclick="installPWA()" class="hidden w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl shadow-md transition transform active:scale-95 flex justify-center items-center text-sm">
+                        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                        Install Aplikasi (PWA)
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW: DASHBOARD USER -->
+            <div id="view-dashboard" class="flex-1 p-4 hidden fade-in overflow-y-auto pb-8 bg-gray-50">
+                
+                <!-- Profil ASN -->
+                <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm mb-5 flex items-center space-x-4">
+                    <div class="w-14 h-14 bg-gradient-to-br from-blue-100 to-blue-200 text-blue-700 rounded-full flex items-center justify-center font-bold text-2xl shrink-0 border-2 border-white shadow-sm">
+                        <span id="profile-initial">A</span>
+                    </div>
+                    <div class="overflow-hidden flex-1">
+                        <h2 class="font-bold text-gray-800 text-lg leading-tight truncate" id="profile-name">Nama Pegawai</h2>
+                        <p class="text-sm text-blue-600 font-semibold truncate" id="profile-unit">Unit Kerja</p>
+                        <p class="text-xs text-gray-400 font-mono mt-0.5 truncate" id="profile-nip">NIP: 12345</p>
+                    </div>
+                </div>
+
+                <!-- Realtime Clock -->
+                <div class="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-2xl p-6 text-white text-center shadow-lg mb-5 relative overflow-hidden">
+                    <div class="absolute -right-10 -top-10 w-32 h-32 bg-white opacity-5 rounded-full blur-2xl"></div>
+                    <p class="text-sm font-medium opacity-90" id="current-date">Memuat Tanggal...</p>
+                    <h2 class="text-5xl font-extrabold my-2 tracking-tight drop-shadow-md font-mono" id="current-time">00:00:00</h2>
+                    <div class="bg-black/20 inline-flex items-center px-3 py-1.5 rounded-full mt-2 border border-white/10 text-xs backdrop-blur-sm">
+                        <span id="location-status">📍 Menunggu sinyal GPS...</span>
+                    </div>
+                </div>
+
+                <!-- Info Lokasi & Aturan Jam Kerja -->
+                <div id="office-info-card" class="bg-white border border-blue-100 rounded-2xl p-4 shadow-sm mb-5 hidden">
+                    <h3 class="font-bold text-gray-800 border-b border-gray-100 pb-2 mb-3 text-sm flex items-center">
+                        <svg class="w-4 h-4 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                        Informasi Kantor & Aturan
+                    </h3>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            <span class="font-bold block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Koordinat:</span>
+                            <span id="office-coords" class="font-mono text-blue-600 font-semibold break-all">-</span>
+                        </div>
+                        <div class="bg-gray-50 p-2 rounded-lg border border-gray-100">
+                            <span class="font-bold block text-[10px] text-gray-500 uppercase tracking-wide mb-1">Radius Izin:</span>
+                            <span id="office-radius" class="font-bold text-gray-800">-</span>
+                        </div>
+                        <div class="col-span-2 mt-1">
+                            <span class="font-bold block text-[10px] text-gray-500 uppercase tracking-wide mb-1.5">Jadwal Kehadiran:</span>
+                            <div id="office-workhours" class="bg-blue-50 p-2.5 rounded-lg border border-blue-100">-</div>
+                        </div>
+                        <div class="col-span-2 mt-1 p-3 bg-gradient-to-r from-gray-50 to-white rounded-lg border border-gray-200 flex justify-between items-center shadow-inner">
+                            <span class="font-semibold text-gray-600 flex items-center"><svg class="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path></svg> Jarak Saat Ini:</span>
+                            <span id="user-distance" class="text-sm font-bold text-gray-400">Menghitung...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status Hari Ini -->
+                <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm mb-5">
+                    <h3 class="font-bold text-gray-800 mb-3 text-sm">Status Hari Ini</h3>
+                    <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg mb-2 border border-gray-100">
+                        <span class="text-sm font-medium text-gray-600 flex items-center"><svg class="w-4 h-4 mr-2 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg> Masuk</span>
+                        <span id="status-masuk" class="text-sm font-bold text-gray-400">Belum Absen</span>
+                    </div>
+                    <div class="flex justify-between items-center bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                        <span class="text-sm font-medium text-gray-600 flex items-center"><svg class="w-4 h-4 mr-2 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg> Pulang</span>
+                        <span id="status-pulang" class="text-sm font-bold text-gray-400">Belum Absen</span>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-3 mb-6">
+                    <button id="btn-masuk" onclick="openCamera('masuk')" class="group relative overflow-hidden flex flex-col items-center justify-center bg-white border-2 border-green-500 text-green-600 p-4 rounded-2xl transition-all shadow-sm transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-50">
+                        <div class="bg-green-100 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg></div>
+                        <span class="font-bold text-sm">Absen Masuk</span>
+                    </button>
+                    <button id="btn-pulang" onclick="openCamera('pulang')" class="group relative overflow-hidden flex flex-col items-center justify-center bg-white border-2 border-orange-400 text-orange-600 p-4 rounded-2xl transition-all shadow-sm transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-orange-50">
+                        <div class="bg-orange-100 p-2 rounded-full mb-2 group-hover:scale-110 transition-transform"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path></svg></div>
+                        <span class="font-bold text-sm">Absen Pulang</span>
+                    </button>
+                    <button id="btn-izin" onclick="bukaModalIzin()" class="col-span-2 group relative overflow-hidden flex items-center justify-center bg-white border-2 border-purple-400 text-purple-600 p-3 rounded-2xl transition-all shadow-sm transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-purple-50">
+                        <div class="bg-purple-100 p-1.5 rounded-full mr-2 group-hover:scale-110 transition-transform"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg></div>
+                        <span class="font-bold text-sm">Ajukan Izin / Cuti / Dinas</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW: DASHBOARD ADMIN -->
+            <div id="view-admin" class="flex-1 hidden fade-in overflow-y-auto bg-gray-50 flex-col pb-8">
+                
+                <!-- Admin Navigation Tabs -->
+                <div class="bg-white shadow-sm flex px-2 pt-2 sticky top-0 z-10">
+                    <button onclick="switchAdminTab('statistik')" id="tab-statistik" class="tab-btn active flex-1 py-3 text-center text-sm font-bold text-gray-500 hover:text-blue-600">📊 Statistik Data</button>
+                    <button onclick="switchAdminTab('pengaturan')" id="tab-pengaturan" class="tab-btn flex-1 py-3 text-center text-sm font-bold text-gray-500 hover:text-blue-600">⚙️ Pengaturan & ASN</button>
+                </div>
+
+                <div class="p-4 flex-1">
+                    
+                    <!-- SUB-VIEW: STATISTIK PRESENSI -->
+                    <div id="admin-sec-statistik" class="fade-in space-y-4">
+                        
+                        <!-- Filters -->
+                        <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                            <h3 class="text-sm font-bold text-gray-800 mb-3 flex items-center"><svg class="w-4 h-4 mr-1.5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"></path></svg>Filter Log Presensi</h3>
+                            <div class="grid grid-cols-2 gap-3 mb-3">
+                                <div>
+                                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Dari Tanggal</label>
+                                    <input type="date" id="filter-start" class="w-full border border-gray-200 rounded-lg p-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" onchange="applyAdminFilter()">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Sampai Tanggal</label>
+                                    <input type="date" id="filter-end" class="w-full border border-gray-200 rounded-lg p-2 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none" onchange="applyAdminFilter()">
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide block mb-1">Filter Unit Kerja</label>
+                                <select id="filter-unit" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50" onchange="applyAdminFilter()">
+                                    <option value="ALL">-- Tampilkan Semua Unit --</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Statistics Cards -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-blue-50 border border-blue-100 p-3 rounded-xl text-center shadow-sm">
+                                <p class="text-[10px] text-blue-600 font-bold mb-1 uppercase tracking-widest">Hadir</p>
+                                <p class="text-2xl font-extrabold text-blue-800" id="stat-total">0</p>
+                            </div>
+                            <div class="bg-green-50 border border-green-100 p-3 rounded-xl text-center shadow-sm">
+                                <p class="text-[10px] text-green-600 font-bold mb-1 uppercase tracking-widest">Tepat</p>
+                                <p class="text-2xl font-extrabold text-green-800" id="stat-tepat">0</p>
+                            </div>
+                            <div class="bg-red-50 border border-red-100 p-3 rounded-xl text-center shadow-sm">
+                                <p class="text-[10px] text-red-600 font-bold mb-1 uppercase tracking-widest">Telat</p>
+                                <p class="text-2xl font-extrabold text-red-800" id="stat-telat">0</p>
+                            </div>
+                            <div class="bg-purple-50 border border-purple-100 p-3 rounded-xl text-center shadow-sm">
+                                <p class="text-[10px] text-purple-600 font-bold mb-1 uppercase tracking-widest">Izin</p>
+                                <p class="text-2xl font-extrabold text-purple-800" id="stat-izin">0</p>
+                            </div>
+                        </div>
+
+                        <!-- Filtered Data List & EXCEL BUTTON -->
+                        <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                            <div class="flex justify-between items-center border-b border-gray-100 pb-3 mb-3">
+                                <h3 class="font-bold text-gray-800 text-sm">Daftar Kehadiran</h3>
+                                <button onclick="exportToExcel()" class="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-sm transition flex items-center transform active:scale-95">
+                                    <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                                    Export Excel
+                                </button>
+                            </div>
+                            <div id="admin-data-list" class="space-y-3 max-h-80 overflow-y-auto pr-2">
+                                <!-- Admin data items injected here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SUB-VIEW: PENGATURAN ASN -->
+                    <div id="admin-sec-pengaturan" class="fade-in hidden space-y-4">
+                        
+                        <!-- Form Pengaturan Jam Kerja -->
+                        <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm overflow-x-auto">
+                            <h3 class="font-bold text-gray-800 border-b border-gray-100 pb-2 mb-4 text-sm">Pengaturan Jadwal Per Hari</h3>
+                            
+                            <table class="w-full text-left border-collapse min-w-[500px] mb-4">
+                                <thead>
+                                    <tr class="text-[10px] text-gray-500 uppercase tracking-wide border-b border-gray-200">
+                                        <th class="py-2 px-1">Hari</th>
+                                        <th class="py-2 px-1 text-center">Aktif</th>
+                                        <th class="py-2 px-1 text-center">Mulai Masuk</th>
+                                        <th class="py-2 px-1 text-center">Batas Masuk</th>
+                                        <th class="py-2 px-1 text-center">Mulai Pulang</th>
+                                        <th class="py-2 px-1 text-center">Batas Pulang</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="jadwal-hari-list">
+                                    <!-- Injected via JS -->
+                                </tbody>
+                            </table>
+
+                            <button id="btn-save-settings" onclick="saveAppSettings()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition text-sm flex justify-center items-center">
+                                Simpan Pengaturan Jadwal
+                            </button>
+                        </div>
+
+                        <!-- Form Tambah ASN -->
+                        <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                            <h3 class="font-bold text-gray-800 border-b border-gray-100 pb-2 mb-3 text-sm">Tambah/Edit Pegawai</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">NIP / Username</label>
+                                    <input type="text" id="asn-nip" class="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-gray-50 outline-none" placeholder="Masukkan NIP unik">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Nama Lengkap</label>
+                                    <input type="text" id="asn-nama" class="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-gray-50 outline-none" placeholder="Nama Pegawai">
+                                </div>
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Unit Kerja</label>
+                                        <input type="text" id="asn-unit" class="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-gray-50 outline-none" placeholder="Dinas / Sub">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Role Akses</label>
+                                        <select id="asn-role" class="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-white outline-none">
+                                            <option value="user">Pegawai (User)</option>
+                                            <option value="admin">Administrator</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Password Akun</label>
+                                    <input type="text" id="asn-password" class="w-full border border-gray-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 bg-gray-50 outline-none" placeholder="Tentukan Password">
+                                </div>
+                                
+                                <!-- Location & Radius -->
+                                <div class="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                                    <p class="text-xs font-bold text-blue-800 mb-2">Pagar Virtual / Geofencing (Opsional)</p>
+                                    <div class="grid grid-cols-2 gap-2 mb-2">
+                                        <div>
+                                            <label class="text-[10px] font-bold text-blue-600 uppercase">Latitude</label>
+                                            <input type="text" id="asn-lat" class="w-full border border-blue-200 rounded p-2 text-sm outline-none" placeholder="-6.200000">
+                                        </div>
+                                        <div>
+                                            <label class="text-[10px] font-bold text-blue-600 uppercase">Longitude</label>
+                                            <input type="text" id="asn-lng" class="w-full border border-blue-200 rounded p-2 text-sm outline-none" placeholder="106.816666">
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] font-bold text-blue-600 uppercase">Radius Izin (meter)</label>
+                                        <input type="number" id="asn-radius" class="w-full border border-blue-200 rounded p-2 text-sm outline-none" placeholder="Contoh: 100">
+                                    </div>
+                                    <p class="text-[9px] text-blue-500 mt-1 italic">*Kosongkan jika absen bebas di mana saja.</p>
+                                </div>
+
+                                <div class="flex gap-2">
+                                    <button id="btn-save-asn" onclick="saveASN()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md transition text-sm">
+                                        Simpan Data Pegawai
+                                    </button>
+                                    <button id="btn-cancel-edit" onclick="cancelEditASN()" class="hidden bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl shadow-md transition text-sm">
+                                        Batal
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Form Upload Excel ASN -->
+                        <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm mt-4 mb-4">
+                            <h3 class="font-bold text-gray-800 border-b border-gray-100 pb-2 mb-3 text-sm flex justify-between items-center">
+                                <span>Upload Pegawai Massal (.xlsx)</span>
+                                <button onclick="downloadTemplateExcel()" class="text-[10px] bg-emerald-100 text-emerald-700 px-2 py-1 rounded hover:bg-emerald-200 transition font-bold outline-none shadow-sm flex items-center"><svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg> Download Template</button>
+                            </h3>
+                            <div class="space-y-3">
+                                <p class="text-[10px] text-gray-500">Kolom yg dibaca: <strong class="text-gray-700">NIP, Nama, Unit Kerja, Role, Password, Latitude, Longitude, Radius</strong></p>
+                                <div class="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition relative">
+                                    <input type="file" id="upload-excel-asn" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onchange="updateFileName(this)">
+                                    <div id="upload-text-wrapper">
+                                        <svg class="mx-auto h-6 w-6 text-emerald-500 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                                        <span class="text-[11px] text-gray-600 font-medium" id="upload-file-name">Pilih atau letakkan file Excel disini</span>
+                                    </div>
+                                </div>
+                                <button id="btn-upload-excel" onclick="uploadExcelASN()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-xl shadow-md transition text-sm flex justify-center items-center">
+                                    <span id="text-btn-upload">Upload & Simpan Data</span>
+                                    <svg id="spinner-upload-excel" class="animate-spin ml-2 h-4 w-4 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Daftar ASN -->
+                        <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+                            <div class="flex justify-between items-center border-b border-gray-100 pb-2 mb-3">
+                                <h3 class="font-bold text-gray-800 text-sm">Daftar Pegawai Terdaftar</h3>
+                                <span id="total-asn-badge" class="bg-blue-100 text-blue-700 text-[10px] px-2 py-1 rounded-full font-bold">0 Pegawai</span>
+                            </div>
+                            
+                            <!-- Filter Daftar ASN -->
+                            <div class="grid grid-cols-2 gap-2 mb-3">
+                                <input type="text" id="search-asn" placeholder="Cari Nama / NIP..." class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none" oninput="renderAdminASNList()">
+                                <select id="filter-unit-asn" class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50" onchange="renderAdminASNList()">
+                                    <option value="ALL">Semua Unit</option>
+                                </select>
+                            </div>
+
+                            <div id="admin-asn-list" class="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                <!-- List ASN injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Reset System -->
+                        <div class="pt-4">
+                            <button onclick="resetData()" class="w-full bg-white border-2 border-red-200 hover:bg-red-50 text-red-600 font-bold py-3 rounded-xl transition shadow-sm flex justify-center items-center text-sm">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                Kosongkan Semua Data Log Presensi
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- MODAL FORM IZIN -->
+            <div id="modal-izin" class="fixed inset-0 bg-black/60 z-[999999] hidden flex justify-center items-center p-4 fade-in backdrop-blur-sm">
+                <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+                    <div class="bg-purple-600 p-4 text-white flex justify-between items-center">
+                        <h3 class="font-bold text-sm flex items-center"><svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg> Pengajuan Izin</h3>
+                        <button onclick="tutupModalIzin()" class="text-white/70 hover:text-white transition"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                    </div>
+                    <div class="p-5 space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Jenis Izin</label>
+                            <select id="izin-jenis" class="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 text-sm outline-none">
+                                <option value="Sakit">Sakit</option>
+                                <option value="Cuti">Cuti</option>
+                                <option value="Dinas Luar">Dinas Luar</option>
+                                <option value="Keperluan Pribadi">Keperluan Pribadi</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Keterangan / Alasan</label>
+                            <textarea id="izin-keterangan" rows="3" class="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 text-sm outline-none resize-none" placeholder="Tuliskan keterangan detail..."></textarea>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-700 mb-1.5 uppercase tracking-wide">Bukti Pendukung (Opsional)</label>
+                            <input type="file" id="izin-bukti" accept="image/*" class="w-full border border-gray-300 rounded-xl p-2 focus:outline-none focus:ring-2 focus:ring-purple-500 bg-gray-50 text-sm" onchange="prosesBuktiIzin(event)">
+                            <img id="izin-bukti-preview" src="" class="mt-2 hidden w-full h-32 object-contain rounded-lg border border-gray-200 bg-gray-100">
+                            <p class="text-[9px] text-gray-500 mt-1 italic">*Format gambar (JPG/PNG). Opsional, menyesuaikan kebijakan instansi.</p>
+                        </div>
+                        <button id="btn-submit-izin" onclick="submitIzin()" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 rounded-xl shadow-md transition transform active:scale-95 flex justify-center items-center text-sm">
+                            <span id="text-btn-izin">Kirim Pengajuan Izin</span>
+                            <svg id="spinner-izin" class="animate-spin ml-2 h-4 w-4 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: CAMERA / PRESENSI -->
+            <div id="view-camera" class="flex-1 flex flex-col bg-black hidden fade-in absolute inset-0 z-50 rounded-lg overflow-hidden">
+                <div class="p-4 flex justify-between items-center text-white bg-gradient-to-b from-black/80 to-transparent absolute top-0 w-full z-20">
+                    <button onclick="closeCamera()" class="p-2 bg-white/20 rounded-full hover:bg-white/30 backdrop-blur-md transition"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                    <span class="font-bold tracking-widest uppercase text-sm drop-shadow-md" id="camera-title">Verifikasi Wajah</span>
+                    <div class="w-10"></div> <!-- Spacer -->
+                </div>
+                
+                <div class="flex-1 flex items-center justify-center relative bg-gray-900 overflow-hidden">
+                    <video id="video" autoplay playsinline class="w-full h-full object-cover absolute inset-0 scale-x-[-1]"></video>
+                    <img id="photo-preview" class="hidden w-full h-full object-cover absolute inset-0 scale-x-[-1]" src="" alt="Preview">
+                    <canvas id="canvas" class="hidden"></canvas>
+                    
+                    <!-- Overlay target focus wajah -->
+                    <div id="camera-overlay" class="absolute inset-0 border-[6px] border-dashed border-white/60 m-10 rounded-full pointer-events-none z-10 shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] transition-all"></div>
+                </div>
+
+                <div class="bg-gradient-to-t from-black via-black/90 to-transparent p-6 pb-8 flex flex-col items-center space-y-4 absolute bottom-0 w-full z-20">
+                    <p id="geo-info" class="text-green-400 text-xs font-mono text-center h-4 drop-shadow-md bg-black/40 px-3 py-1 rounded-full backdrop-blur-sm">Mengambil lokasi GPS...</p>
+                    
+                    <div class="flex justify-center w-full space-x-4 relative z-20 h-20 items-center">
+                        <button id="btn-capture" onclick="takeSnapshot()" class="w-16 h-16 bg-white rounded-full border-4 border-gray-300 shadow-[0_0_15px_rgba(255,255,255,0.5)] transform active:scale-90 transition outline-none"></button>
+                        
+                        <button id="btn-retake" onclick="retakePhoto()" class="hidden bg-gray-700 hover:bg-gray-600 text-white px-6 py-3 rounded-full font-bold shadow-lg text-sm border border-gray-500 transition">Ulangi</button>
+                        <button id="btn-submit" onclick="submitPresensi()" class="hidden bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-full font-bold shadow-[0_0_15px_rgba(37,99,235,0.5)] border border-blue-400 text-sm transition flex items-center">
+                            <span>Kirim Data</span>
+                            <svg id="submit-spinner" class="animate-spin ml-2 h-4 w-4 text-white hidden" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- PWA SETUP SCRIPT -->
+    <script>
+        // 1. Generate & Inject Manifest dynamically
+        const manifestData = {
+            name: "Sistem Presensi ASN",
+            short_name: "Presensi",
+            description: "Sistem Kehadiran Berbasis Firebase",
+            start_url: location.href,
+            display: "standalone",
+            background_color: "#f3f4f6",
+            theme_color: "#1d4ed8",
+            icons: [
+                {
+                    src: "https://upload.wikimedia.org/wikipedia/commons/1/1a/Logo_Kementerian_Dalam_Negeri_Republik_Indonesia.png",
+                    sizes: "192x192",
+                    type: "image/png"
+                },
+                {
+                    src: "https://upload.wikimedia.org/wikipedia/commons/1/1a/Logo_Kementerian_Dalam_Negeri_Republik_Indonesia.png",
+                    sizes: "512x512",
+                    type: "image/png"
+                }
+            ]
+        };
+        // Menggunakan Data URI untuk manifest
+        const manifestString = encodeURIComponent(JSON.stringify(manifestData));
+        const manifestUrl = 'data:application/json;charset=utf-8,' + manifestString;
+        const manifestLink = document.createElement('link');
+        manifestLink.rel = 'manifest';
+        manifestLink.href = manifestUrl;
+        document.head.appendChild(manifestLink);
+
+        // CATATAN: Service Worker tidak bisa didaftarkan menggunakan Blob URL 
+        // karena kebijakan keamanan browser (harus berupa file HTTPS fisik).
+        // Blok registrasi Service Worker telah dihapus untuk menghilangkan error.
+
+        // 2. Handle PWA Installation Prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            // Tampilkan tombol install
+            const installBtn = document.getElementById('btn-install-pwa');
+            if (installBtn) installBtn.classList.remove('hidden');
+        });
+
+        window.installPWA = async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('PWA Installed successfully');
+                }
+                deferredPrompt = null;
+                document.getElementById('btn-install-pwa').classList.add('hidden');
+            }
+        };
+    </script>
+
+    <!-- MAIN LOGIC JAVASCRIPT DENGAN FIREBASE SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, getDocs, deleteDoc, query } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+
+        // ====================================================================
+        // 1. KONFIGURASI FIREBASE
+        // ====================================================================
+        
+        let firebaseConfig;
+        const isCanvas = typeof __firebase_config !== 'undefined';
+        
+        if (isCanvas) {
+            firebaseConfig = JSON.parse(__firebase_config);
+        } else {
+            firebaseConfig = {
+              apiKey: "AIzaSyArxNVCamAlCBT9S_mSUYCy0aptC08JVQg",
+              authDomain: "whywid-database.firebaseapp.com",
+              projectId: "whywid-database",
+              storageBucket: "whywid-database.firebasestorage.app",
+              messagingSenderId: "100991368805",
+              appId: "1:100991368805:web:c598f9da212f81005d108c",
+              measurementId: "G-83P7GK1YS7"
+            };
+        }
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = isCanvas && typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        function getCollectionPath(colName) {
+            return isCanvas ? `artifacts/${appId}/public/data/${colName}` : colName;
+        }
+
+        async function fetchWithTimeout() {
+            const fetchPromise = (async () => {
+                const master = [];
+                const snapM = await getDocs(query(collection(db, getCollectionPath('MASTER_ASN'))));
+                snapM.forEach(d => master.push(d.data()));
+
+                const presensi = [];
+                const snapP = await getDocs(query(collection(db, getCollectionPath('LOG_PRESENSI'))));
+                snapP.forEach(d => presensi.push(d.data()));
+
+                let settings = {
+                    hariKerja: [1, 2, 3, 4, 5],
+                    jadwal: {
+                        1: { aktif: true, masukMulai: '06:00', masukAkhir: '08:00', pulangMulai: '16:00', pulangAkhir: '18:00' },
+                        2: { aktif: true, masukMulai: '06:00', masukAkhir: '08:00', pulangMulai: '16:00', pulangAkhir: '18:00' },
+                        3: { aktif: true, masukMulai: '06:00', masukAkhir: '08:00', pulangMulai: '16:00', pulangAkhir: '18:00' },
+                        4: { aktif: true, masukMulai: '06:00', masukAkhir: '08:00', pulangMulai: '16:00', pulangAkhir: '18:00' },
+                        5: { aktif: true, masukMulai: '06:00', masukAkhir: '08:00', pulangMulai: '16:30', pulangAkhir: '18:30' },
+                        6: { aktif: false, masukMulai: '', masukAkhir: '', pulangMulai: '', pulangAkhir: '' },
+                        0: { aktif: false, masukMulai: '', masukAkhir: '', pulangMulai: '', pulangAkhir: '' }
+                    }
+                };
+                
+                const snapS = await getDocs(query(collection(db, getCollectionPath('PENGATURAN'))));
+                snapS.forEach(d => {
+                    if (d.id === 'app_settings') {
+                        try { settings = JSON.parse(d.data().JSON_Value); } catch(e){}
+                    }
+                });
+
+                if (master.length === 0) {
+                    master.push({ nip: 'admin', nama: 'Administrator Sistem', unitKerja: 'Pusat Data', role: 'admin', password: 'admin', lat: '', lng: '', radius: '' });
+                    await setDoc(doc(db, getCollectionPath('MASTER_ASN'), 'admin'), master[0]);
+                }
+                return { master, presensi, settings };
+            })();
+
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("TIMEOUT_DB")), 10000));
+            return Promise.race([fetchPromise, timeoutPromise]);
+        }
+
+        async function firebaseCall(method, ...args) {
+            if (!auth.currentUser) throw new Error("Akses Database Ditolak (Belum Login Firebase).");
+
+            if (method === 'getSemuaData') {
+                return await fetchWithTimeout();
+            } else if (method === 'simpanDataASN') {
+                await setDoc(doc(db, getCollectionPath('MASTER_ASN'), args[0].nip), args[0]);
+                return true;
+            } else if (method === 'hapusDataASN') {
+                await deleteDoc(doc(db, getCollectionPath('MASTER_ASN'), args[0]));
+                return true;
+            } else if (method === 'simpanPengaturan') {
+                await setDoc(doc(db, getCollectionPath('PENGATURAN'), 'app_settings'), { JSON_Value: JSON.stringify(args[0]) });
+                return true;
+            } else if (method === 'simpanDataPresensi') {
+                
+                // --- PERBAIKAN STRUKTUR DATA AGAR TERBACA OLEH KARTU STATUS ---
+                const payload = args[0];
+                let existing = window.presensiData.find(p => p.tanggal === payload.tanggal && p.username === payload.username);
+                
+                if (payload.tipe === 'masuk') {
+                    if (existing) return { success: false, message: "Anda sudah melakukan presensi masuk hari ini!" };
+                    
+                    // Merubah format mentah dari kamera menjadi format Standar Database
+                    const docData = {
+                        id: payload.id, 
+                        username: payload.username, 
+                        tanggal: payload.tanggal,
+                        jamMasuk: payload.waktu, 
+                        lokasiMasuk: payload.lokasi, 
+                        status: payload.status, 
+                        fotoMasuk: payload.foto
+                    };
+                    await setDoc(doc(db, getCollectionPath('LOG_PRESENSI'), payload.id), docData);
+
+                } else if (payload.tipe === 'pulang') {
+                    if (existing) {
+                        existing.jamPulang = payload.waktu; 
+                        existing.statusPulang = payload.status; 
+                        existing.lokasiPulang = payload.lokasi; 
+                        existing.fotoPulang = payload.foto;
+                        await setDoc(doc(db, getCollectionPath('LOG_PRESENSI'), existing.id), existing);
+                    } else {
+                        // Jika memaksa absen pulang tapi belum absen masuk
+                        const docData = {
+                            id: payload.id, 
+                            username: payload.username, 
+                            tanggal: payload.tanggal,
+                            jamMasuk: "-", 
+                            lokasiMasuk: "-", 
+                            status: "Tanpa Masuk", 
+                            jamPulang: payload.waktu, 
+                            lokasiPulang: payload.lokasi, 
+                            statusPulang: payload.status,
+                            fotoPulang: payload.foto
+                        };
+                        await setDoc(doc(db, getCollectionPath('LOG_PRESENSI'), payload.id), docData);
+                    }
+                } else if (payload.tipe === 'izin') {
+                    if (existing) return { success: false, message: "Anda sudah memiliki riwayat presensi hari ini!" };
+                    const docData = {
+                        id: payload.id, 
+                        username: payload.username, 
+                        tanggal: payload.tanggal,
+                        jamMasuk: "-",
+                        status: payload.status, 
+                        lokasiMasuk: payload.lokasi, // Menyimpan alasan izin
+                        fotoMasuk: payload.foto
+                    };
+                    await setDoc(doc(db, getCollectionPath('LOG_PRESENSI'), payload.id), docData);
+                }
+                return { success: true, message: "Berhasil disimpan" };
+
+            } else if (method === 'resetPresensiData') {
+                const snapP = await getDocs(query(collection(db, getCollectionPath('LOG_PRESENSI'))));
+                snapP.forEach(async (d) => { await deleteDoc(doc(db, getCollectionPath('LOG_PRESENSI'), d.id)); });
+                return true;
+            }
+        }
+
+
+        // ====================================================================
+        // 2. STATE & VARIABEL GLOBAL APLIKASI
+        // ====================================================================
+        window.currentUser = localStorage.getItem('asn_user') || '';
+        window.currentRole = localStorage.getItem('asn_role') || 'user';
+        
+        window.masterASN = []; window.presensiData = []; window.appSettings = {}; window.currentFilteredData = []; 
+        window.currentLat = null; window.currentLng = null;
+        window.currentType = ''; window.currentPhotoData = null; window.currentIzinPhotoData = ''; 
+        window.videoStream = null; window.clockInterval = null;
+
+        const viewLogin = document.getElementById('view-login'); const viewDashboard = document.getElementById('view-dashboard');
+        const viewAdmin = document.getElementById('view-admin'); const viewCamera = document.getElementById('view-camera');
+        const appHeader = document.getElementById('app-header');
+
+        function getJadwalHariIni(day) {
+            if (window.appSettings.jadwal && window.appSettings.jadwal[day]) return window.appSettings.jadwal[day];
+            let isAktif = window.appSettings.hariKerja ? window.appSettings.hariKerja.includes(day) : false;
+            return { aktif: isAktif, masukMulai: window.appSettings.jamMasukMulai || '06:00', masukAkhir: window.appSettings.jamMasukAkhir || '08:00', pulangMulai: window.appSettings.jamPulangMulai || '16:00', pulangAkhir: window.appSettings.jamPulangAkhir || '18:00' };
+        }
+
+        // ====================================================================
+        // 3. FUNGSI INISIALISASI (ON LOAD)
+        // ====================================================================
+        window.onload = async () => {
+            const today = getTodayDateString();
+            document.getElementById('filter-start').value = today; document.getElementById('filter-end').value = today;
+
+            try {
+                showBtnLoading('btn-login-submit', true, "Menghubungkan Server...");
+                
+                if (isCanvas && typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                if (window.currentUser) {
+                    await fetchDataFromServer();
+                    showBtnLoading('btn-login-submit', false, "Masuk ke Sistem");
+                    
+                    const validUser = window.masterASN.find(m => m.nip === window.currentUser);
+                    if(validUser || window.currentUser === 'admin') routeUser(); else logout();
+                } else {
+                    showBtnLoading('btn-login-submit', false, "Masuk ke Sistem");
+                }
+            } catch (error) {
+                console.error("Init Error:", error);
+                let pesan = "Gagal terhubung ke Firebase.";
+                
+                if (error.code === 'auth/operation-not-allowed') {
+                    pesan = "🔥 ERROR: Anda belum MENGAKTIFKAN 'Anonymous Login' di Firebase Authentication!";
+                } else if (error.message === 'TIMEOUT_DB') {
+                    pesan = "🔥 ERROR: Firestore belum dibuat! Buka Firebase Console > Firestore Database > Create Database.";
+                }
+                
+                showToast(pesan, "error");
+                showBtnLoading('btn-login-submit', false, "Gagal Terhubung");
+            }
+        };
+
+        async function fetchDataFromServer() {
+            const res = await firebaseCall('getSemuaData');
+            window.masterASN = res.master || []; window.presensiData = res.presensi || []; window.appSettings = res.settings || {};
+        }
+
+        // ====================================================================
+        // 4. AUTENTIKASI (LOGIN & LOGOUT)
+        // ====================================================================
+        async function login() {
+            const user = document.getElementById('login-username').value.trim();
+            const pass = document.getElementById('login-password').value.trim();
+            
+            if (!user || !pass) { showToast('NIP dan Password tidak boleh kosong!', 'error'); return; }
+            
+            try {
+                showBtnLoading('btn-login-submit', true, "Memverifikasi...");
+                await fetchDataFromServer();
+                
+                const pegawai = window.masterASN.find(m => String(m.nip) === user && String(m.password) === pass);
+                
+                if (pegawai) {
+                    window.currentUser = user; window.currentRole = pegawai.role || 'user';
+                    finalizeLogin();
+                } else if (user === 'admin' && pass === 'admin') { 
+                    window.currentUser = 'admin'; window.currentRole = 'admin';
+                    finalizeLogin();
+                } else {
+                    showToast('NIP atau Password salah!', 'error');
+                    showBtnLoading('btn-login-submit', false, "Masuk ke Sistem");
+                }
+            } catch (err) {
+                console.error(err);
+                let errMsg = err.message;
+                
+                if (errMsg.includes("permission") || errMsg.includes("Missing or insufficient permissions")) {
+                    errMsg = "🔥 Akses Ditolak: Rules Firestore masih memblokir! Ubah ke allow read, write: if true;";
+                } else if (errMsg.includes("Belum Login Firebase") || errMsg.includes("auth/operation-not-allowed")) {
+                    errMsg = "🔥 ERROR: Autentikasi Anonim di Firebase belum aktif!";
+                } else if (errMsg === "TIMEOUT_DB") {
+                    errMsg = "🔥 TIMEOUT: Database Firestore belum di-Create atau Server Down!";
+                }
+                
+                showToast(errMsg, "error");
+                showBtnLoading('btn-login-submit', false, "Coba Lagi");
+            }
+        }
+
+        function finalizeLogin() {
+            localStorage.setItem('asn_user', window.currentUser); localStorage.setItem('asn_role', window.currentRole);
+            document.getElementById('login-password').value = ''; 
+            showBtnLoading('btn-login-submit', false, "Masuk ke Sistem");
+            routeUser(); showToast("Berhasil Login", "success");
+        }
+
+        function logout() {
+            localStorage.removeItem('asn_user'); localStorage.removeItem('asn_role');
+            window.currentUser = ''; window.currentRole = 'user';
+            if (window.clockInterval) clearInterval(window.clockInterval);
+            
+            viewDashboard.classList.add('hidden'); viewAdmin.classList.add('hidden');
+            appHeader.classList.add('hidden'); viewLogin.classList.remove('hidden');
+            document.getElementById('login-username').value = '';
+        }
+
+        function routeUser() {
+            viewLogin.classList.add('hidden'); appHeader.classList.remove('hidden');
+            
+            let profileInfo = window.masterASN.find(m => m.nip === window.currentUser);
+            let dName = profileInfo ? profileInfo.nama : (window.currentUser === 'admin' ? 'Administrator' : window.currentUser);
+            let roleBadge = window.currentRole === 'admin' ? '<span class="bg-red-500 text-white px-1.5 py-0.5 rounded text-[9px] ml-1 font-bold">ADMIN</span>' : '';
+            document.getElementById('header-username').innerHTML = `${dName} ${roleBadge}`;
+
+            if (window.currentRole === 'admin') {
+                viewDashboard.classList.add('hidden');
+                viewAdmin.classList.remove('hidden'); viewAdmin.classList.add('flex');
+                
+                renderAdminASNList(); populateUnitFilter(); applyAdminFilter(); renderJadwalAdmin();
+            } else {
+                viewAdmin.classList.add('hidden'); viewAdmin.classList.remove('flex');
+                viewDashboard.classList.remove('hidden');
+                
+                refreshDashboardData(); startClock(); getLocation(false);
+            }
+        }
+
+
+        // ====================================================================
+        // 5. DASHBOARD PEGAWAI (USER)
+        // ====================================================================
+        function startClock() {
+            if (window.clockInterval) clearInterval(window.clockInterval);
+            const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+            const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Ags','Sep','Okt','Nov','Des'];
+            window.clockInterval = setInterval(() => {
+                const now = new Date();
+                document.getElementById('current-date').innerText = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+                document.getElementById('current-time').innerText = now.toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour12: false });
+            }, 1000);
+        }
+
+        function refreshDashboardData() {
+            const profile = window.masterASN.find(m => m.nip === window.currentUser) || {};
+            const pName = profile.nama || window.currentUser;
+            
+            document.getElementById('profile-name').innerText = pName;
+            document.getElementById('profile-unit').innerText = profile.unitKerja || '-';
+            document.getElementById('profile-nip').innerText = `NIP: ${window.currentUser}`;
+            document.getElementById('profile-initial').innerText = pName.charAt(0).toUpperCase();
+
+            const todayStr = getTodayDateString();
+            const todayRecord = window.presensiData.find(d => d.tanggal === todayStr && d.username === window.currentUser);
+            const currentDay = new Date().getDay();
+            const jadwalHariIni = getJadwalHariIni(currentDay);
+            const isWorkingDay = jadwalHariIni.aktif;
+
+            const officeCard = document.getElementById('office-info-card');
+            officeCard.classList.remove('hidden');
+            
+            if (profile.lat && profile.lng && profile.radius) {
+                document.getElementById('office-coords').innerText = `${profile.lat}, ${profile.lng}`;
+                document.getElementById('office-radius').innerText = `${profile.radius}m`;
+                document.getElementById('user-distance').parentElement.classList.remove('hidden');
+            } else {
+                document.getElementById('office-coords').innerText = `Bebas (Cloud)`; 
+                document.getElementById('office-radius').innerText = `Tidak Dibatasi`;
+                document.getElementById('user-distance').parentElement.classList.add('hidden');
+            }
+
+            if (isWorkingDay) {
+                document.getElementById('office-workhours').innerHTML = `
+                    <div class="text-[10px] text-blue-700 mb-1.5 font-bold">📆 Jadwal Shift Hari Ini</div>
+                    <div class="grid grid-cols-2 gap-2 text-[10px] font-medium text-gray-700">
+                        <div class="bg-white p-1.5 rounded shadow-sm">Masuk: <br><span class="font-bold text-gray-900 text-xs">${jadwalHariIni.masukMulai} - ${jadwalHariIni.masukAkhir}</span></div>
+                        <div class="bg-white p-1.5 rounded shadow-sm">Pulang: <br><span class="font-bold text-gray-900 text-xs">${jadwalHariIni.pulangMulai} - ${jadwalHariIni.pulangAkhir}</span></div>
+                    </div>`;
+            } else {
+                document.getElementById('office-workhours').innerHTML = `<div class="text-[11px] text-red-600 font-bold bg-red-50 p-2 rounded border border-red-200 text-center">📆 Hari Ini Ditetapkan Libur</div>`;
+            }
+
+            const btnMasuk = document.getElementById('btn-masuk'); const btnPulang = document.getElementById('btn-pulang');
+            const btnIzin = document.getElementById('btn-izin');
+            const statMasuk = document.getElementById('status-masuk'); const statPulang = document.getElementById('status-pulang');
+
+            if (!isWorkingDay) {
+                btnMasuk.disabled = true; btnMasuk.classList.add('opacity-50', 'grayscale', 'cursor-not-allowed');
+                btnPulang.disabled = true; btnPulang.classList.add('opacity-50', 'grayscale', 'cursor-not-allowed');
+                btnIzin.disabled = true; btnIzin.classList.add('opacity-50', 'grayscale', 'cursor-not-allowed');
+                statMasuk.innerHTML = '<span class="text-xs font-bold text-red-500">Hari Libur</span>';
+                statPulang.innerHTML = '<span class="text-xs font-bold text-red-500">Hari Libur</span>';
+            } else {
+                btnMasuk.disabled = false; btnMasuk.classList.remove('opacity-50', 'grayscale', 'cursor-not-allowed');
+                btnPulang.disabled = false; btnPulang.classList.remove('opacity-50', 'grayscale', 'cursor-not-allowed');
+                btnIzin.disabled = false; btnIzin.classList.remove('opacity-50', 'grayscale', 'cursor-not-allowed');
+                statMasuk.innerHTML = 'Belum Absen'; statMasuk.className = 'text-sm font-bold text-gray-400';
+                statPulang.innerHTML = 'Belum Absen'; statPulang.className = 'text-sm font-bold text-gray-400';
+
+                // --- PERBAIKAN PEMBACAAN DATA PADA KARTU HARI INI ---
+                if (todayRecord) {
+                    // Beri dukungan ke data lama yang sempat tersimpan menggunakan field 'waktu' saja
+                    let jMasuk = todayRecord.jamMasuk || (todayRecord.tipe === 'masuk' ? todayRecord.waktu : null);
+                    let jPulang = todayRecord.jamPulang || (todayRecord.tipe === 'pulang' ? todayRecord.waktu : null);
+                    let stat = todayRecord.status || "-";
+
+                    if (stat.includes('Izin')) {
+                        btnMasuk.disabled = true; btnMasuk.classList.add('opacity-50', 'cursor-not-allowed');
+                        btnPulang.disabled = true; btnPulang.classList.add('opacity-50', 'cursor-not-allowed');
+                        btnIzin.disabled = true; btnIzin.classList.add('opacity-50', 'cursor-not-allowed');
+                        
+                        statMasuk.innerHTML = `<span class="bg-purple-100 text-purple-700 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">${stat}</span>`;
+                        statPulang.innerHTML = `<span class="text-xs font-bold text-purple-600">Sesuai Izin</span>`;
+                    } else {
+                        if (jMasuk && jMasuk !== "-") {
+                            btnMasuk.disabled = true; btnMasuk.classList.add('opacity-50', 'cursor-not-allowed');
+                            btnIzin.disabled = true; btnIzin.classList.add('opacity-50', 'cursor-not-allowed'); 
+                            let badgeColor = stat === 'Tepat Waktu' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700';
+                            statMasuk.innerHTML = `<span class="font-mono text-gray-800">${jMasuk}</span> <span class="${badgeColor} ml-2 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase">${stat}</span>`;
+                        }
+                        if (jPulang && jPulang !== "-") {
+                            btnPulang.disabled = true; btnPulang.classList.add('opacity-50', 'cursor-not-allowed');
+                            statPulang.innerHTML = `<span class="font-mono text-gray-800 font-bold">${jPulang}</span>`;
+                        }
+                    }
+                }
+            }
+        }
+
+
+        // ====================================================================
+        // 6. DASHBOARD ADMIN (LOGIC & CRUD)
+        // ====================================================================
+        function switchAdminTab(tabName) {
+            document.getElementById('tab-statistik').classList.remove('active', 'text-blue-600'); document.getElementById('tab-pengaturan').classList.remove('active', 'text-blue-600');
+            document.getElementById('admin-sec-statistik').classList.add('hidden'); document.getElementById('admin-sec-pengaturan').classList.add('hidden');
+            
+            document.getElementById(`tab-${tabName}`).classList.add('active', 'text-blue-600'); 
+            document.getElementById(`admin-sec-${tabName}`).classList.remove('hidden');
+        }
+
+        function populateUnitFilter() {
+            const filterSelect = document.getElementById('filter-unit');
+            const filterSelectASN = document.getElementById('filter-unit-asn');
+            const units = [...new Set(window.masterASN.map(item => item.unitKerja).filter(Boolean))];
+            
+            let optionsHTML = '<option value="ALL">-- Tampilkan Semua Unit --</option>';
+            let optionsHTMLASN = '<option value="ALL">Semua Unit</option>';
+            
+            units.forEach(unit => { 
+                optionsHTML += `<option value="${unit}">${unit}</option>`; 
+                optionsHTMLASN += `<option value="${unit}">${unit}</option>`; 
+            });
+            
+            if(filterSelect) filterSelect.innerHTML = optionsHTML;
+            if(filterSelectASN) filterSelectASN.innerHTML = optionsHTMLASN;
+        }
+
+        function applyAdminFilter() {
+            const startStr = document.getElementById('filter-start').value; const endStr = document.getElementById('filter-end').value;
+            const unitFilter = document.getElementById('filter-unit').value;
+            
+            let joinedData = window.presensiData.map(record => {
+                let pegawai = window.masterASN.find(m => m.nip === record.username);
+                // Dukungan data error lama di tabel Admin
+                return { 
+                    ...record, 
+                    namaBaru: pegawai ? pegawai.nama : record.username, 
+                    unitBaru: pegawai ? pegawai.unitKerja : '-',
+                    jamMasuk: record.jamMasuk || (record.tipe === 'masuk' ? record.waktu : null),
+                    jamPulang: record.jamPulang || (record.tipe === 'pulang' ? record.waktu : null),
+                    lokasiMasuk: record.lokasiMasuk || (record.tipe === 'masuk' || record.tipe === 'izin' ? record.lokasi : null),
+                    lokasiPulang: record.lokasiPulang || (record.tipe === 'pulang' ? record.lokasi : null),
+                    status: record.status || "-",
+                    fotoMasuk: record.fotoMasuk || (record.tipe === 'masuk' || record.tipe === 'izin' ? record.foto : null),
+                    fotoPulang: record.fotoPulang || (record.tipe === 'pulang' ? record.foto : null)
+                };
+            });
+
+            if (startStr && endStr) {
+                const startDT = new Date(startStr).getTime(); const endDT = new Date(endStr).getTime();
+                joinedData = joinedData.filter(d => { const dTime = new Date(d.tanggal).getTime(); return dTime >= startDT && dTime <= endDT; });
+            }
+            if (unitFilter !== 'ALL') joinedData = joinedData.filter(d => d.unitBaru === unitFilter);
+
+            joinedData.sort((a,b) => {
+                let da = new Date(a.tanggal + 'T' + (a.jamMasuk || a.waktu || '00:00')).getTime();
+                let db = new Date(b.tanggal + 'T' + (b.jamMasuk || b.waktu || '00:00')).getTime();
+                return db - da;
+            });
+            
+            window.currentFilteredData = joinedData; 
+            renderAdminStatistik(joinedData);
+        }
+
+        function renderAdminStatistik(filteredData) {
+            const list = document.getElementById('admin-data-list'); list.innerHTML = '';
+            let countHadir = 0; let countTepat = 0; let countTelat = 0; let countIzin = 0;
+
+            if (filteredData.length === 0) list.innerHTML = '<p class="text-xs text-gray-400 text-center py-8">Tidak ada data sesuai filter.</p>';
+            else {
+                filteredData.forEach(item => {
+                    if (item.status.includes('Izin')) {
+                        countIzin++;
+                    } else {
+                        countHadir++;
+                        if (item.status === 'Tepat Waktu') countTepat++; else if (item.status === 'Terlambat') countTelat++;
+                    }
+                    
+                    let statusColor = '';
+                    if (item.status.includes('Izin')) statusColor = 'text-purple-600 bg-purple-50 border-purple-200';
+                    else if (item.status === 'Tepat Waktu') statusColor = 'text-green-600 bg-green-50 border-green-200';
+                    else statusColor = 'text-red-600 bg-red-50 border-red-200';
+                    
+                    list.innerHTML += `
+                        <div class="bg-gray-50 border border-gray-200 p-3 rounded-xl flex flex-col space-y-2 text-sm shadow-sm">
+                            <div class="flex justify-between items-center border-b border-gray-200 pb-2">
+                                <div class="overflow-hidden">
+                                    <span class="font-bold text-gray-800 block truncate text-xs">${item.namaBaru}</span>
+                                    <span class="text-[9px] text-gray-500 font-mono">${item.username} | ${item.unitBaru}</span>
+                                </div>
+                                <span class="text-[10px] font-bold text-gray-600 bg-gray-200 px-2 py-1 rounded shrink-0 ml-2">${item.tanggal}</span>
+                            </div>
+                            <div class="flex justify-between items-center">
+                                <span class="text-gray-500 text-[10px]">Masuk: <span class="font-mono font-bold text-gray-800 text-xs ml-1">${item.jamMasuk || '-'}</span></span>
+                                <span class="text-[9px] font-bold px-2 py-0.5 rounded border ${statusColor} uppercase">${item.status}</span>
+                            </div>
+                            <div class="flex justify-between items-center bg-white p-1.5 rounded border border-gray-100">
+                                <span class="text-gray-500 text-[10px]">Pulang: <span class="font-mono font-bold text-blue-600 text-xs ml-1">${item.jamPulang || '-'}</span></span>
+                                ${item.status.includes('Izin') ? `<span class="text-[9px] italic text-gray-400">Ket: ${item.lokasiMasuk}</span>` : ''}
+                            </div>
+                            
+                            <!-- INFORMASI LOKASI & FOTO -->
+                            <div class="bg-white p-2 rounded-lg border border-gray-100 flex gap-2 items-start mt-1">
+                                <div class="flex space-x-1.5 shrink-0">
+                                    <div class="flex flex-col items-center">
+                                        ${item.fotoMasuk ? `<img src="${item.fotoMasuk}" class="w-8 h-8 rounded object-cover border border-gray-200 shadow-sm hover:scale-[2] transform origin-bottom-left transition cursor-pointer" title="Foto Masuk">` : `<div class="w-8 h-8 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-[8px] text-gray-400">N/A</div>`}
+                                        <span class="text-[8px] text-gray-500 mt-0.5 font-bold">M</span>
+                                    </div>
+                                    <div class="flex flex-col items-center">
+                                        ${item.fotoPulang ? `<img src="${item.fotoPulang}" class="w-8 h-8 rounded object-cover border border-gray-200 shadow-sm hover:scale-[2] transform origin-bottom-left transition cursor-pointer" title="Foto Pulang">` : `<div class="w-8 h-8 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-[8px] text-gray-400">N/A</div>`}
+                                        <span class="text-[8px] text-gray-500 mt-0.5 font-bold">P</span>
+                                    </div>
+                                </div>
+                                <div class="flex-1 min-w-0 flex flex-col justify-center space-y-1 py-0.5">
+                                    ${!item.status.includes('Izin') ? `<div class="text-[9px] text-gray-600 truncate flex items-center" title="${item.lokasiMasuk || '-'}"><span class="text-green-500 mr-1 font-bold">📍M:</span> <span class="truncate">${item.lokasiMasuk || '-'}</span></div>` : ''}
+                                    ${!item.status.includes('Izin') ? `<div class="text-[9px] text-gray-600 truncate flex items-center" title="${item.lokasiPulang || '-'}"><span class="text-orange-500 mr-1 font-bold">📍P:</span> <span class="truncate">${item.lokasiPulang || '-'}</span></div>` : ''}
+                                    ${item.status.includes('Izin') ? `<div class="text-[9px] text-gray-600 truncate flex items-center" title="${item.lokasiMasuk || '-'}"><span class="text-purple-500 mr-1 font-bold">📝:</span> <span class="truncate">${item.lokasiMasuk || '-'}</span></div>` : ''}
+                                </div>
+                            </div>
+                        </div>`;
+                });
+            }
+            
+            animateValue("stat-total", 0, countHadir, 500);
+            animateValue("stat-tepat", 0, countTepat, 500);
+            animateValue("stat-telat", 0, countTelat, 500);
+            animateValue("stat-izin", 0, countIzin, 500);
+        }
+
+        function exportToExcel() {
+            if (window.currentFilteredData.length === 0) { showToast("Tidak ada data untuk diekspor", "error"); return; }
+            
+            const startStr = document.getElementById('filter-start').value;
+            const unitName = document.getElementById('filter-unit').options[document.getElementById('filter-unit').selectedIndex].text;
+            
+            const exportData = window.currentFilteredData.map((item, index) => {
+                let ketPulang = "";
+                let lokasiMasukStr = item.lokasiMasuk || "-";
+                
+                if (item.status.includes('Izin')) {
+                    ketPulang = "Sesuai Izin";
+                    lokasiMasukStr = `Keterangan: ${item.lokasiMasuk}`; 
+                } else if(item.jamPulang) {
+                    const itemDay = new Date(item.tanggal).getDay();
+                    const jadwalItem = getJadwalHariIni(itemDay);
+
+                    const [pJ, pM] = item.jamPulang.split(':').map(Number);
+                    const [batasPulangJ, batasPulangM] = (jadwalItem.pulangMulai || '16:00').split(':').map(Number);
+                    ketPulang = ((pJ * 60 + pM) < (batasPulangJ * 60 + batasPulangM)) ? "Pulang Awal" : "Sesuai Aturan";
+                }
+
+                return {
+                    "No": index + 1, "Nama Lengkap": item.namaBaru, "NIP": item.username, "Unit Kerja": item.unitBaru,
+                    "Tanggal": item.tanggal, "Jam Masuk": item.jamMasuk || "-", "Status Masuk": item.status, "Lokasi GPS / Keterangan": lokasiMasukStr,
+                    "Jam Pulang": item.jamPulang || "-", "Status Pulang": ketPulang || "-", "Lokasi GPS Pulang": item.lokasiPulang || "-"
+                };
+            });
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new(); 
+            XLSX.utils.book_append_sheet(wb, ws, "Laporan");
+            XLSX.writeFile(wb, `Log_Presensi_${unitName}_${startStr}.xlsx`);
+        }
+
+        async function saveASN() {
+            const nip = document.getElementById('asn-nip').value.trim(); const nama = document.getElementById('asn-nama').value.trim();
+            const unit = document.getElementById('asn-unit').value.trim(); const role = document.getElementById('asn-role').value;
+            const password = document.getElementById('asn-password').value.trim();
+            const lat = document.getElementById('asn-lat').value.trim(); const lng = document.getElementById('asn-lng').value.trim();
+            let radius = document.getElementById('asn-radius').value.trim();
+
+            if(!nip || !nama || !unit || !password) { showToast("Kolom identitas wajib diisi!", "error"); return; }
+            if (lat && lng && !radius) radius = "100";
+
+            const payload = { nip, nama, unitKerja: unit, role, password, lat, lng, radius };
+            showBtnLoading('btn-save-asn', true, "Menyimpan...");
+
+            try {
+                await firebaseCall('simpanDataASN', payload);
+                let idx = window.masterASN.findIndex(m => String(m.nip) === String(nip));
+                if(idx > -1) window.masterASN[idx] = payload; else window.masterASN.push(payload);
+                renderAdminASNList(); cancelEditASN(); showToast("Data Pegawai Tersimpan", "success");
+            } catch (err) { showToast("Gagal menyimpan: " + err, "error"); } 
+            finally { showBtnLoading('btn-save-asn', false, "Simpan Data Pegawai"); }
+        }
+
+        async function hapusASN(nip) {
+            const strNip = String(nip);
+            if(!confirm(`PERINGATAN: Yakin hapus hak akses untuk NIP ${strNip}?`)) return;
+            try {
+                await firebaseCall('hapusDataASN', strNip);
+                window.masterASN = window.masterASN.filter(m => String(m.nip) !== strNip); 
+                renderAdminASNList(); showToast("Akses dicabut", "success");
+            } catch(err) { showToast("Gagal menghapus: " + err, "error"); }
+        }
+
+        function editASN(nip) {
+            const strNip = String(nip);
+            const p = window.masterASN.find(m => String(m.nip) === strNip);
+            if (p) {
+                document.getElementById('asn-nip').value = p.nip; document.getElementById('asn-nip').readOnly = true;
+                document.getElementById('asn-nip').classList.add('bg-gray-200', 'cursor-not-allowed');
+                document.getElementById('asn-nama').value = p.nama || ''; document.getElementById('asn-unit').value = p.unitKerja || ''; 
+                document.getElementById('asn-role').value = p.role || 'user'; document.getElementById('asn-password').value = p.password || '';
+                document.getElementById('asn-lat').value = p.lat || ''; document.getElementById('asn-lng').value = p.lng || ''; document.getElementById('asn-radius').value = p.radius || '';
+                
+                document.getElementById('btn-save-asn').innerText = "Update Data Pegawai";
+                document.getElementById('btn-cancel-edit').classList.remove('hidden');
+                document.getElementById('asn-nip').scrollIntoView({ behavior: 'smooth', block: 'center' }); 
+            }
+        }
+
+        function cancelEditASN() {
+            document.getElementById('asn-nip').readOnly = false; document.getElementById('asn-nip').classList.remove('bg-gray-200', 'cursor-not-allowed');
+            document.getElementById('asn-nip').value = ''; document.getElementById('asn-nama').value = ''; document.getElementById('asn-unit').value = ''; 
+            document.getElementById('asn-password').value = ''; document.getElementById('asn-role').value = 'user';
+            document.getElementById('asn-lat').value = ''; document.getElementById('asn-lng').value = ''; document.getElementById('asn-radius').value = '';
+            document.getElementById('btn-save-asn').innerText = "Simpan Data Pegawai"; document.getElementById('btn-cancel-edit').classList.add('hidden');
+        }
+
+        function downloadTemplateExcel() {
+            const wsData = [
+                ["NIP", "Nama", "Unit Kerja", "Role", "Password", "Latitude", "Longitude", "Radius"],
+                ["198001012005011001", "Budi Santoso", "Dinas Pendidikan", "user", "123456", "-6.200000", "106.816666", "100"],
+                ["198202022006022002", "Siti Aminah", "Dinas Kesehatan", "user", "654321", "", "", ""]
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Template_ASN");
+            XLSX.writeFile(wb, "Template_Upload_Pegawai.xlsx");
+        }
+
+        function updateFileName(input) {
+            const nameDisplay = document.getElementById('upload-file-name');
+            if(input.files.length > 0) {
+                nameDisplay.innerHTML = `<span class="text-emerald-600 font-bold">${input.files[0].name}</span>`;
+            } else {
+                nameDisplay.innerHTML = `Pilih atau letakkan file Excel disini`;
+            }
+        }
+
+        async function uploadExcelASN() {
+            const fileInput = document.getElementById('upload-excel-asn');
+            const file = fileInput.files[0];
+            if (!file) { showToast("Pilih file Excel terlebih dahulu!", "error"); return; }
+
+            const btn = document.getElementById('btn-upload-excel');
+            const btnSpan = document.getElementById('text-btn-upload');
+            const spinner = document.getElementById('spinner-upload-excel');
+            
+            btn.disabled = true; btnSpan.innerText = "Memproses..."; spinner.classList.remove('hidden');
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheet = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheet];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+
+                    if (json.length === 0) { throw new Error("Data Excel Kosong / Format Salah"); }
+
+                    let successCount = 0;
+                    for (let i = 0; i < json.length; i++) {
+                        const row = json[i];
+                        
+                        // Fitur Cerdas untuk mendeteksi variasi nama Kolom
+                        const getVal = (key) => {
+                            const foundKey = Object.keys(row).find(k => k.toLowerCase().replace(/ /g, '') === key.toLowerCase());
+                            return foundKey ? String(row[foundKey]).trim() : '';
+                        };
+
+                        const nip = getVal('nip') || getVal('username');
+                        const nama = getVal('nama') || getVal('namalengkap');
+                        const unitKerja = getVal('unitkerja') || getVal('unit') || '';
+                        const role = (getVal('role') || 'user').toLowerCase();
+                        const password = getVal('password') || getVal('pass') || '123456';
+                        const lat = getVal('lat') || getVal('latitude') || '';
+                        const lng = getVal('lng') || getVal('longitude') || '';
+                        let radius = getVal('radius') || '';
+
+                        if (!nip || !nama) continue; // Melewati baris kosong atau tanpa NIP/Nama
+                        if (lat && lng && !radius) radius = "100";
+
+                        const payload = { nip, nama, unitKerja, role, password, lat, lng, radius };
+                        
+                        await firebaseCall('simpanDataASN', payload);
+                        
+                        let idx = window.masterASN.findIndex(m => String(m.nip) === String(nip));
+                        if(idx > -1) window.masterASN[idx] = payload; else window.masterASN.push(payload);
+                        
+                        successCount++;
+                    }
+
+                    renderAdminASNList(); populateUnitFilter(); fileInput.value = ''; updateFileName(fileInput);
+                    showToast(`Berhasil menyimpan ${successCount} data pegawai!`, "success");
+                } catch (err) {
+                    showToast("Gagal: " + err.message, "error");
+                } finally {
+                    btn.disabled = false; btnSpan.innerText = "Upload & Simpan Data"; spinner.classList.add('hidden');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+
+        function renderAdminASNList() {
+            const list = document.getElementById('admin-asn-list'); list.innerHTML = '';
+            
+            const searchTerm = (document.getElementById('search-asn')?.value || '').toLowerCase();
+            const unitFilter = document.getElementById('filter-unit-asn')?.value || 'ALL';
+
+            let filteredASN = window.masterASN.filter(m => {
+                const matchSearch = (m.nama || '').toLowerCase().includes(searchTerm) || String(m.nip).toLowerCase().includes(searchTerm);
+                const matchUnit = unitFilter === 'ALL' || m.unitKerja === unitFilter;
+                return matchSearch && matchUnit;
+            });
+
+            const badge = document.getElementById('total-asn-badge');
+            if(badge) badge.innerText = `${filteredASN.length} Pegawai`;
+
+            if (filteredASN.length === 0) { list.innerHTML = '<p class="text-xs text-gray-400 text-center py-4 bg-gray-50 border rounded-xl">Pegawai tidak ditemukan.</p>'; return; }
+            
+            filteredASN.forEach(m => {
+                const infoGeo = (m.lat && m.radius) ? `<span class="text-[9px] font-bold text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded border border-blue-200">📍 Geo On</span>` : `<span class="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">🌐 Bebas</span>`;
+                const roleBadge = m.role === 'admin' ? `<span class="text-[9px] font-bold text-red-600 bg-red-100 px-1.5 py-0.5 rounded border border-red-200">ADMIN</span>` : ``;
+                const safeNip = String(m.nip).replace(/'/g, "\\'"); 
+                
+                list.innerHTML += `
+                    <div class="flex justify-between items-center bg-gray-50 border border-gray-200 p-2.5 rounded-xl hover:bg-gray-100 transition shadow-sm">
+                        <div class="overflow-hidden">
+                            <p class="text-xs font-bold text-gray-800 truncate">${m.nama} ${roleBadge}</p>
+                            <p class="text-[10px] text-gray-500 mt-0.5 font-mono">${m.nip} | ${m.unitKerja} ${infoGeo}</p>
+                        </div>
+                        <div class="flex space-x-1 shrink-0 ml-2">
+                            <button onclick="editASN('${safeNip}')" class="text-[10px] text-blue-600 hover:text-blue-800 font-bold p-1.5 bg-blue-100 hover:bg-blue-200 rounded transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg></button>
+                            <button onclick="hapusASN('${safeNip}')" class="text-[10px] text-red-600 hover:text-red-800 font-bold p-1.5 bg-red-100 hover:bg-red-200 rounded transition"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg></button>
+                        </div>
+                    </div>`;
+            });
+        }
+
+        // --- CRUD SETTINGS ---
+        function renderJadwalAdmin() {
+            const list = document.getElementById('jadwal-hari-list'); list.innerHTML = '';
+            const hariNames = {1:'Senin', 2:'Selasa', 3:'Rabu', 4:'Kamis', 5:'Jumat', 6:'Sabtu', 0:'Minggu'};
+            const urutanHari = [1, 2, 3, 4, 5, 6, 0];
+
+            urutanHari.forEach(h => {
+                let hData = getJadwalHariIni(h);
+                list.innerHTML += `
+                    <tr class="border-b border-gray-100 last:border-0 hover:bg-white transition">
+                        <td class="py-2 px-1 text-xs font-bold text-gray-700">${hariNames[h]}</td>
+                        <td class="py-2 px-1 text-center"><input type="checkbox" id="jadwal-aktif-${h}" class="accent-blue-600 w-4 h-4" ${hData.aktif ? 'checked' : ''} onchange="toggleRowJadwal(${h})"></td>
+                        <td class="py-2 px-1"><input type="time" id="jadwal-mm-${h}" value="${hData.masukMulai}" class="w-full border border-gray-200 rounded p-1.5 text-[10px] outline-none input-jadwal-${h} ${!hData.aktif ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-white'}" ${!hData.aktif ? 'disabled' : ''}></td>
+                        <td class="py-2 px-1"><input type="time" id="jadwal-ma-${h}" value="${hData.masukAkhir}" class="w-full border border-gray-200 rounded p-1.5 text-[10px] outline-none input-jadwal-${h} ${!hData.aktif ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-white'}" ${!hData.aktif ? 'disabled' : ''}></td>
+                        <td class="py-2 px-1"><input type="time" id="jadwal-pm-${h}" value="${hData.pulangMulai}" class="w-full border border-gray-200 rounded p-1.5 text-[10px] outline-none input-jadwal-${h} ${!hData.aktif ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-white'}" ${!hData.aktif ? 'disabled' : ''}></td>
+                        <td class="py-2 px-1"><input type="time" id="jadwal-pa-${h}" value="${hData.pulangAkhir}" class="w-full border border-gray-200 rounded p-1.5 text-[10px] outline-none input-jadwal-${h} ${!hData.aktif ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-white'}" ${!hData.aktif ? 'disabled' : ''}></td>
+                    </tr>
+                `;
+            });
+        }
+
+        function toggleRowJadwal(h) {
+            const isChecked = document.getElementById(`jadwal-aktif-${h}`).checked;
+            document.querySelectorAll(`.input-jadwal-${h}`).forEach(el => {
+                el.disabled = !isChecked;
+                if(!isChecked) { el.classList.add('bg-gray-100', 'opacity-50', 'cursor-not-allowed'); el.classList.remove('bg-white'); } 
+                else { el.classList.remove('bg-gray-100', 'opacity-50', 'cursor-not-allowed'); el.classList.add('bg-white'); }
+            });
+        }
+
+        async function saveAppSettings() {
+            let jadwal = {}; let hariKerja = []; const urutanHari = [1, 2, 3, 4, 5, 6, 0]; let isValid = true;
+            urutanHari.forEach(h => {
+                const aktif = document.getElementById(`jadwal-aktif-${h}`).checked;
+                const masukMulai = document.getElementById(`jadwal-mm-${h}`).value; const masukAkhir = document.getElementById(`jadwal-ma-${h}`).value;
+                const pulangMulai = document.getElementById(`jadwal-pm-${h}`).value; const pulangAkhir = document.getElementById(`jadwal-pa-${h}`).value;
+                if (aktif) { hariKerja.push(h); if(!masukMulai || !masukAkhir || !pulangMulai || !pulangAkhir) isValid = false; }
+                jadwal[h] = { aktif, masukMulai, masukAkhir, pulangMulai, pulangAkhir };
+            });
+
+            if (!isValid) { showToast("Jika hari aktif, jadwal jamnya harus diisi lengkap!", "error"); return; }
+            const payload = { hariKerja, jadwal };
+            showBtnLoading('btn-save-settings', true, "Menyinkronkan...");
+            
+            try {
+                await firebaseCall('simpanPengaturan', payload);
+                window.appSettings = payload; showToast("Pengaturan Jadwal Disimpan", "success");
+            } catch (err) { showToast("Gagal menyimpan: " + err, "error"); }
+            finally { showBtnLoading('btn-save-settings', false, "Simpan Pengaturan Jadwal"); }
+        }
+
+        async function resetData() {
+            if(!confirm("BAHAYA! Ini akan menghapus SEMUA LOG PRESENSI secara permanen dari Database. Lanjutkan?")) return;
+            try {
+                await firebaseCall('resetPresensiData');
+                window.presensiData = []; applyAdminFilter(); showToast("Database Log Bersih!", "success");
+            } catch(err) { showToast("Gagal mereset: " + err, "error"); }
+        }
+
+
+        // ====================================================================
+        // 7. LOKASI GPS, KAMERA, & IZIN (FUNGSI INTI)
+        // ====================================================================
+        function bukaModalIzin() {
+            document.getElementById('modal-izin').classList.remove('hidden'); document.getElementById('izin-keterangan').value = '';
+            document.getElementById('izin-bukti').value = ''; document.getElementById('izin-bukti-preview').classList.add('hidden');
+            document.getElementById('izin-bukti-preview').src = ''; window.currentIzinPhotoData = '';
+        }
+
+        function tutupModalIzin() { document.getElementById('modal-izin').classList.add('hidden'); }
+
+        function prosesBuktiIzin(event) {
+            const file = event.target.files[0];
+            if (!file) { window.currentIzinPhotoData = ''; document.getElementById('izin-bukti-preview').classList.add('hidden'); return; }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas'); const MAX_DIM = 800; let width = img.width; let height = img.height;
+                    if (width > height) { if (width > MAX_DIM) { height *= MAX_DIM / width; width = MAX_DIM; } } 
+                    else { if (height > MAX_DIM) { width *= MAX_DIM / height; height = MAX_DIM; } }
+                    
+                    canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
+                    window.currentIzinPhotoData = canvas.toDataURL('image/jpeg', 0.6); 
+                    
+                    const preview = document.getElementById('izin-bukti-preview');
+                    preview.src = window.currentIzinPhotoData; preview.classList.remove('hidden');
+                };
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        async function submitIzin() {
+            const jenis = document.getElementById('izin-jenis').value; const keterangan = document.getElementById('izin-keterangan').value.trim();
+            if (!keterangan) { showToast("Keterangan/Alasan wajib diisi!", "error"); return; }
+            if (!confirm(`Yakin mengirimkan Izin (${jenis}) untuk hari ini?`)) return;
+
+            const now = new Date(); const timeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            const payload = { id: now.getTime().toString(), username: window.currentUser, tanggal: getTodayDateString(), waktu: timeStr, tipe: 'izin', lokasi: keterangan, status: `Izin - ${jenis}`, foto: window.currentIzinPhotoData };
+
+            const btnSubmit = document.getElementById('btn-submit-izin'); const btnSpan = document.getElementById('text-btn-izin'); const spinner = document.getElementById('spinner-izin');
+            btnSubmit.disabled = true; btnSpan.innerText = "Mengirim..."; spinner.classList.remove('hidden');
+
+            try {
+                const res = await firebaseCall('simpanDataPresensi', payload);
+                if(res.success) {
+                    showToast(`Pengajuan ${jenis} Berhasil!`, "success");
+                    await fetchDataFromServer(); tutupModalIzin(); refreshDashboardData(); 
+                } else { showToast(res.message, "error"); }
+            } catch (err) { showToast("Koneksi Cloud Gagal!", "error"); } 
+            finally { btnSubmit.disabled = false; btnSpan.innerText = "Kirim Pengajuan Izin"; spinner.classList.add('hidden'); }
+        }
+
+        function getLocation(requireExact = true) {
+            const statusText = document.getElementById('location-status'); const geoInfo = document.getElementById('geo-info');
+            if (!navigator.geolocation) { if(requireExact) showToast("Browser tidak mendukung GPS", "error"); return; }
+            if(statusText) statusText.innerHTML = '<span class="animate-pulse">📍 Mencari sinyal Satelit...</span>';
+            if(geoInfo) geoInfo.innerText = "Mengunci koordinat lokasi...";
+
+            function successCallback(position) {
+                window.currentLat = position.coords.latitude; window.currentLng = position.coords.longitude;
+                const acc = Math.round(position.coords.accuracy);
+                
+                if(statusText) { let accColor = acc <= 50 ? 'text-green-300' : 'text-yellow-300'; statusText.innerHTML = `📍 GPS Terkunci <span class="${accColor} ml-1 text-[10px]">(±${acc}m)</span>`; }
+                if(geoInfo) geoInfo.innerText = `Koordinat: ${window.currentLat.toFixed(5)}, ${window.currentLng.toFixed(5)}`;
+
+                const profile = window.masterASN.find(m => m.nip === window.currentUser);
+                if (profile && profile.lat && profile.lng && profile.radius) {
+                    const jarak = hitungJarakMeter(window.currentLat, window.currentLng, parseFloat(profile.lat), parseFloat(profile.lng));
+                    const distEl = document.getElementById('user-distance');
+                    if(distEl) {
+                        const jrkRound = Math.round(jarak); 
+                        if (jrkRound <= parseFloat(profile.radius)) {
+                            distEl.innerText = `${jrkRound.toLocaleString('id-ID')} m (Aman)`; distEl.className = "text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded shadow-sm border border-green-200";
+                        } else {
+                            distEl.innerText = `${jrkRound.toLocaleString('id-ID')} m (Di luar pagar)`; distEl.className = "text-xs font-bold text-red-600 bg-red-100 px-2 py-1 rounded shadow-sm border border-red-200";
+                        }
+                    }
+                }
+            }
+
+            function errorCallback(error) {
+                let msg = "Gagal mengambil lokasi.";
+                if (error.code === 1) msg = "Akses GPS ditolak browser/HP."; else if (error.code === 2) msg = "Sinyal GPS hilang/lemah."; else if (error.code === 3) msg = "Pencarian GPS Timeout.";
+                if(statusText) statusText.innerHTML = '<span class="text-red-300">📍 GPS Error</span>';
+                if(geoInfo) geoInfo.innerText = msg;
+                if(requireExact) showToast(msg, "error");
+            }
+            navigator.geolocation.getCurrentPosition(successCallback, errorCallback, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+        }
+
+        function hitungJarakMeter(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; const p1 = lat1 * Math.PI/180; const p2 = lat2 * Math.PI/180;
+            const dp = (lat2-lat1) * Math.PI/180; const dl = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+            return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))); 
+        }
+
+        async function openCamera(type) {
+            window.currentType = type; document.getElementById('camera-title').innerText = type === 'masuk' ? 'Presensi Masuk' : 'Presensi Pulang';
+            document.getElementById('photo-preview').classList.add('hidden'); document.getElementById('video').classList.remove('hidden');
+            document.getElementById('camera-overlay').classList.remove('hidden'); document.getElementById('btn-capture').classList.remove('hidden');
+            document.getElementById('btn-retake').classList.add('hidden'); document.getElementById('btn-submit').classList.add('hidden');
+            window.currentPhotoData = null;
+
+            try {
+                window.videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } });
+                document.getElementById('video').srcObject = window.videoStream;
+                viewDashboard.classList.add('hidden'); appHeader.classList.add('hidden'); viewCamera.classList.remove('hidden');
+                getLocation(true); 
+            } catch (err) { document.getElementById('fallback-camera-input').click(); }
+        }
+
+        function handleFallbackCamera(event) {
+            const file = event.target.files[0]; if (!file) return;
+            viewDashboard.classList.add('hidden'); appHeader.classList.add('hidden'); viewCamera.classList.remove('hidden');
+            document.getElementById('video').classList.add('hidden'); document.getElementById('camera-overlay').classList.add('hidden');
+            document.getElementById('btn-capture').classList.add('hidden');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas'); const MAX = 640; let width = img.width; let height = img.height;
+                    if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } else { if (height > MAX) { width *= MAX / height; height = MAX; } }
+                    canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height);
+                    window.currentPhotoData = canvas.toDataURL('image/jpeg', 0.6); 
+                    const preview = document.getElementById('photo-preview'); preview.src = window.currentPhotoData; preview.classList.remove('hidden');
+                    document.getElementById('btn-retake').classList.remove('hidden'); document.getElementById('btn-submit').classList.remove('hidden');
+                    getLocation(true);
+                };
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function closeCamera() {
+            if (window.videoStream) { window.videoStream.getTracks().forEach(t => t.stop()); window.videoStream = null; }
+            document.getElementById('fallback-camera-input').value = ''; viewCamera.classList.add('hidden'); routeUser(); 
+        }
+
+        function takeSnapshot() {
+            const video = document.getElementById('video'); const canvas = document.getElementById('canvas'); const preview = document.getElementById('photo-preview');
+            let width = video.videoWidth; let height = video.videoHeight; const MAX = 640;
+            if (width > height) { if (width > MAX) { height *= MAX / width; width = MAX; } } else { if (height > MAX) { width *= MAX / height; height = MAX; } }
+
+            canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d');
+            ctx.translate(width, 0); ctx.scale(-1, 1); ctx.drawImage(video, 0, 0, width, height);
+            window.currentPhotoData = canvas.toDataURL('image/jpeg', 0.7); 
+            video.classList.add('hidden'); document.getElementById('camera-overlay').classList.add('hidden');
+            preview.src = window.currentPhotoData; preview.classList.remove('hidden');
+            document.getElementById('btn-capture').classList.add('hidden'); 
+            document.getElementById('btn-retake').classList.remove('hidden'); document.getElementById('btn-submit').classList.remove('hidden');
+        }
+
+        function retakePhoto() {
+            window.currentPhotoData = null; document.getElementById('photo-preview').classList.add('hidden'); document.getElementById('btn-capture').classList.remove('hidden');
+            document.getElementById('btn-retake').classList.add('hidden'); document.getElementById('btn-submit').classList.add('hidden');
+            if (!window.videoStream) { closeCamera(); document.getElementById('fallback-camera-input').click(); } 
+            else { document.getElementById('video').classList.remove('hidden'); document.getElementById('camera-overlay').classList.remove('hidden'); }
+        }
+
+        async function submitPresensi() {
+            if (!window.currentPhotoData) { showToast("Gagal memproses foto!", "error"); return; }
+            if (!window.currentLat || !window.currentLng) { showToast("Sinyal GPS belum terkunci, tunggu sejenak.", "error"); return; }
+
+            const now = new Date(); const currentDay = now.getDay(); const jadwalHariIni = getJadwalHariIni(currentDay);
+            if (!jadwalHariIni.aktif) { showToast("Ditolak: Bukan hari efektif kerja!", "error"); return; }
+
+            const profile = window.masterASN.find(m => m.nip === window.currentUser);
+            if (profile && profile.lat && profile.lng && profile.radius) {
+                const jarak = hitungJarakMeter(window.currentLat, window.currentLng, parseFloat(profile.lat), parseFloat(profile.lng));
+                if (jarak > parseFloat(profile.radius)) { showToast(`DITOLAK: Jarak Anda (${Math.round(jarak)}m) di luar batas izin!`, "error"); return; }
+            }
+
+            const j = now.getHours(); const m = now.getMinutes(); const timeStr = `${String(j).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            const todayStr = getTodayDateString(); let statusLog = "-"; const menitSkrg = (j * 60) + m;
+            
+            if (window.currentType === 'masuk') {
+                const [mJ, mM] = (jadwalHariIni.masukMulai).split(':').map(Number); const [aJ, aM] = (jadwalHariIni.masukAkhir).split(':').map(Number);
+                if (menitSkrg < (mJ * 60) + mM) { showToast(`Sistem belum menerima absen masuk!`, "error"); return; }
+                statusLog = (menitSkrg > (aJ * 60) + aM) ? "Terlambat" : "Tepat Waktu";
+            } else {
+                const [pJ, pM] = (jadwalHariIni.pulangMulai).split(':').map(Number); const [aJ, aM] = (jadwalHariIni.pulangAkhir).split(':').map(Number);
+                if (menitSkrg < (pJ * 60) + pM) { showToast(`Sistem pulang belum dibuka!`, "error"); return; }
+                if (menitSkrg > (aJ * 60) + aM) { showToast(`Batas absen pulang terlewat!`, "error"); return; }
+            }
+
+            const payload = { id: now.getTime().toString(), username: window.currentUser, tanggal: todayStr, waktu: timeStr, tipe: window.currentType, lokasi: `${window.currentLat.toFixed(6)}, ${window.currentLng.toFixed(6)}`, status: statusLog, foto: window.currentPhotoData };
+            const btnSubmit = document.getElementById('btn-submit'); const btnSpan = btnSubmit.querySelector('span'); const spinner = document.getElementById('submit-spinner');
+            
+            btnSubmit.disabled = true; btnSpan.innerText = "Mengirim..."; spinner.classList.remove('hidden');
+
+            try {
+                const res = await firebaseCall('simpanDataPresensi', payload);
+                if(res.success) { showToast("Presensi Cloud Berhasil!", "success"); await fetchDataFromServer(); closeCamera(); } 
+                else { showToast(res.message, "error"); }
+            } catch (err) { showToast("Koneksi Cloud Gagal!", "error"); } 
+            finally { btnSubmit.disabled = false; btnSpan.innerText = "Kirim Data"; spinner.classList.add('hidden'); }
+        }
+
+        // ====================================================================
+        // UTILITIES
+        // ====================================================================
+        function getTodayDateString() {
+            const now = new Date(); const yyyy = now.getFullYear(); const mm = String(now.getMonth() + 1).padStart(2, '0'); const dd = String(now.getDate()).padStart(2, '0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+
+        let toastTimeout;
+        function showToast(msg, type) {
+            const toast = document.getElementById('toast'); toast.innerText = msg; 
+            toast.className = `toast show ${type === 'success' ? 'toast-success' : 'toast-error'}`;
+            clearTimeout(toastTimeout); toastTimeout = setTimeout(() => { toast.classList.remove('show'); }, 3500);
+        }
+
+        function showBtnLoading(btnId, isLoading, text) {
+            const btn = document.getElementById(btnId); if(!btn) return; btn.disabled = isLoading;
+            const spinner = document.getElementById(btnId === 'btn-login-submit' ? 'login-spinner' : 'submit-spinner');
+            if(btnId === 'btn-login-submit') { document.getElementById('login-text').innerText = text; if(spinner) isLoading ? spinner.classList.remove('hidden') : spinner.classList.add('hidden'); } 
+            else { btn.innerText = text; }
+        }
+
+        function animateValue(id, start, end, duration) {
+            if (start === end) return; let range = end - start; let current = start; let increment = end > start ? 1 : -1;
+            let stepTime = Math.abs(Math.floor(duration / range)); let obj = document.getElementById(id);
+            let timer = setInterval(function() { current += increment; obj.innerHTML = current; if (current == end) { clearInterval(timer); } }, stepTime);
+        }
+
+        // Ekspos Fungsi ke Global Scope (Karena menggunakan type="module")
+        Object.assign(window, { login, logout, openCamera, closeCamera, takeSnapshot, retakePhoto, submitPresensi, bukaModalIzin, tutupModalIzin, submitIzin, prosesBuktiIzin, handleFallbackCamera, switchAdminTab, applyAdminFilter, exportToExcel, saveASN, cancelEditASN, editASN, hapusASN, toggleRowJadwal, saveAppSettings, resetData, downloadTemplateExcel, updateFileName, uploadExcelASN, renderAdminASNList });
+    </script>
+</body>
+</html>
